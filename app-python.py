@@ -48,6 +48,22 @@ class PBX20Service:
             KSR.sl.send_reply(404, "Not Found")
             return 1
 
+        dst_uri = KSR.pv.get("$ru")
+        busy_state = KSR.dialog.dlg_bye_reason()
+
+        if busy_state == "Busy":
+            ad_uri = "sip:busyann@127.0.0.1:5080"
+            KSR.info(f"User busy. Forwarding to announcement server at {ad_uri}\n")
+            KSR.pv.seti("$du", ad_uri)
+            KSR.tm.t_relay()
+            return 1
+        elif busy_state == "Conference":
+            ad_uri = "sip:inconference@127.0.0.1:5080"
+            KSR.info(f"User in conference. Forwarding to announcement server at {ad_uri}\n")
+            KSR.pv.seti("$du", ad_uri)
+            KSR.tm.t_relay()
+            return 1
+
         KSR.info("Forwarding INVITE to registered user.\n")
         KSR.tm.t_relay()
         return 1
@@ -56,6 +72,8 @@ class PBX20Service:
         uri = KSR.pv.get("$ru")
         if uri == "sip:validar@acme.pt":
             self.validate_pin(msg)
+        elif KSR.pv.get("$fu") == "sip:gestor@acme.pt" and KSR.pv.get("$rb").strip().lower() == "report":
+            self.send_kpi_report()
         else:
             KSR.info("Unhandled MESSAGE URI.\n")
         return 1
@@ -68,6 +86,11 @@ class PBX20Service:
         else:
             KSR.info("PIN validation failed.\n")
             KSR.sl.send_reply(403, "Forbidden")
+
+    def send_kpi_report(self):
+        report_content = "Chamadas atendidas: 10\nConferências realizadas: 5"
+        KSR.info("Sending KPI report.\n")
+        KSR.textops.text_reply_with_body(200, "OK", report_content)
 
     def handle_other_methods(self, msg):
         KSR.info(f"Handling method: {msg.Method}\n")
