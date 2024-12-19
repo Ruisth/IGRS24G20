@@ -1,12 +1,21 @@
 import KSR as KSR
+import threading
+from pygnmi.server import gNMIService, gNMIServer
+from pygnmi.server import ProtoSubscribeResponse, SubscribeRequest, SubscribeResponse
+from concurrent.futures import ThreadPoolExecutor
 
 def mod_init():
-    KSR.info("===== PBX2.0 Service Initialized =====\n")
+    KSR.info("===== PBX2.0 Service Initialized with gNMI Support =====\n")
     return PBX20Service()
 
 class PBX20Service:
     def __init__(self):
         KSR.info("===== PBX20Service.__init__ =====\n")
+        self.kpis = {
+            "calls_auto_attended": 0,
+            "conferences_created": 0,
+        }
+        self.start_gnmi_server()
 
     def child_init(self, rank):
         KSR.info(f"===== PBX20Service.child_init(rank={rank}) =====\n")
@@ -48,32 +57,19 @@ class PBX20Service:
             KSR.sl.send_reply(404, "Not Found")
             return 1
 
-        dst_uri = KSR.pv.get("$ru")
-        busy_state = KSR.dialog.dlg_bye_reason()
-
-        if busy_state == "Busy":
-            ad_uri = "sip:busyann@127.0.0.1:5080"
-            KSR.info(f"User busy. Forwarding to announcement server at {ad_uri}\n")
-            KSR.pv.seti("$du", ad_uri)
-            KSR.tm.t_relay()
-            return 1
-        elif busy_state == "Conference":
-            ad_uri = "sip:inconference@127.0.0.1:5080"
-            KSR.info(f"User in conference. Forwarding to announcement server at {ad_uri}\n")
-            KSR.pv.seti("$du", ad_uri)
-            KSR.tm.t_relay()
-            return 1
-
         KSR.info("Forwarding INVITE to registered user.\n")
         KSR.tm.t_relay()
+
+        # Update KPI for auto-attended calls
+        self.kpis["calls_auto_attended"] += 1
         return 1
 
     def handle_message(self, msg):
         uri = KSR.pv.get("$ru")
         if uri == "sip:validar@acme.pt":
             self.validate_pin(msg)
-        elif KSR.pv.get("$fu") == "sip:gestor@acme.pt" and KSR.pv.get("$rb").strip().lower() == "report":
-            self.send_kpi_report()
+        elif KSR.pv.get("$fU") == "gestor" and "Report" in KSR.pv.get("$rb"):
+            self.report_kpis(msg)
         else:
             KSR.info("Unhandled MESSAGE URI.\n")
         return 1
@@ -87,10 +83,11 @@ class PBX20Service:
             KSR.info("PIN validation failed.\n")
             KSR.sl.send_reply(403, "Forbidden")
 
-    def send_kpi_report(self):
-        report_content = "Chamadas atendidas: 10\nConferências realizadas: 5"
-        KSR.info("Sending KPI report.\n")
-        KSR.textops.text_reply_with_body(200, "OK", report_content)
+    def report_kpis(self, msg):
+        report = f"KPIs:\n" \
+                 f" - Calls Auto-Attended: {self.kpis['calls_auto_attended']}\n" \
+                 f" - Conferences Created: {self.kpis['conferences_created']}\n"
+        KSR.msg.send(msg.SrcURI, report)
 
     def handle_other_methods(self, msg):
         KSR.info(f"Handling method: {msg.Method}\n")
@@ -112,3 +109,19 @@ class PBX20Service:
     def ksr_failure_route_INVITE(self, msg):
         KSR.info("===== PBX20Service.failure_route_INVITE =====\n")
         return 1
+
+    #### gNMI Integration ####
+    def start_gnmi_server(self):
+        def gnmi_callback(request: SubscribeRequest) -> SubscribeResponse:
+            """Callback to provide KPI metrics via gNMI."""
+            updates = []
+            for path in request.subscription:
+                key = path.path[0]
+                if key in self.kpis:
+                    updates.append(ProtoSubscribeResponse(path=path.path[0], value=self.kpis[key]))
+            return SubscribeResponse(update=updates)
+
+        server = gNMIServer(address=("0.0.0.0", 50051), callback=gnmi_callback)
+        thread = threading.Thread(target=server.start, daemon=True)
+        thread.start()
+        KSR.info("gNMI server started on port 50051.\n")
