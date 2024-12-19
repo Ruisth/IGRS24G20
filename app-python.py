@@ -1,7 +1,7 @@
 import KSR as KSR
 import threading
-from pygnmi.server import gNMIService, gNMIServer
-from pygnmi.server import ProtoSubscribeResponse, SubscribeRequest, SubscribeResponse
+#from pygnmi.server import gNMIService, gNMIServer
+#from pygnmi.server import ProtoSubscribeResponse, SubscribeRequest, SubscribeResponse
 from concurrent.futures import ThreadPoolExecutor
 
 def mod_init():
@@ -15,7 +15,7 @@ class PBX20Service:
             "calls_auto_attended": 0,
             "conferences_created": 0,
         }
-        self.start_gnmi_server()
+        #self.start_gnmi_server()
 
     def child_init(self, rank):
         KSR.info(f"===== PBX20Service.child_init(rank={rank}) =====\n")
@@ -110,18 +110,18 @@ class PBX20Service:
         KSR.info("===== PBX20Service.failure_route_INVITE =====\n")
         return 1
 
-    #### gNMI Integration ####
-    def start_gnmi_server(self):
-        def gnmi_callback(request: SubscribeRequest) -> SubscribeResponse:
-            """Callback to provide KPI metrics via gNMI."""
-            updates = []
-            for path in request.subscription:
-                key = path.path[0]
-                if key in self.kpis:
-                    updates.append(ProtoSubscribeResponse(path=path.path[0], value=self.kpis[key]))
-            return SubscribeResponse(update=updates)
-
-        server = gNMIServer(address=("0.0.0.0", 50051), callback=gnmi_callback)
-        thread = threading.Thread(target=server.start, daemon=True)
-        thread.start()
-        KSR.info("gNMI server started on port 50051.\n")
+     #### gNMI Integration ####
+   # def start_gnmi_server(self):
+       # def gnmi_callback(request: SubscribeRequest) -> SubscribeResponse:
+        #    """Callback to provide KPI metrics via gNMI."""
+        #    updates = []
+         #   for path in request.subscription:
+        #        key = path.path[0]
+        #        if key in self.kpis:
+        #            updates.append(ProtoSubscribeResponse(path=path.path[0], value=self.kpis[key]))
+        #    return SubscribeResponse(update=updates)
+#
+        #server = gNMIServer(address=("0.0.0.0", 50051), callback=gnmi_callback)
+       # thread = threading.Thread(target=server.start, daemon=True)
+       # thread.start()
+        #KSR.info("gNMI server started on port 50051.\n")
