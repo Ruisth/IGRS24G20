@@ -6,3 +6,7 @@ request_route {
 route[PYTHON_SCRIPT] {
     setflag(1); # Flag para processar em script Python
 }
+
+Verificar se estão lá estes modulos:
+loadmodule "tm.so"
+loadmodule "sl.so"
