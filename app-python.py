@@ -97,7 +97,7 @@ class PBX20Service:
             KSR.info("Redirecting to conference room.\n")
             
             # Modifica a URI de destino
-            KSR.pv.set("$ru", "sip:conferencia@127.0.0.1:5090")
+            KSR.pv.sets("$ru", "sip:conferencia@127.0.0.1:5090")
             KSR.tm.t_relay()
 
             self.kpis["conferences_created"] += 1
