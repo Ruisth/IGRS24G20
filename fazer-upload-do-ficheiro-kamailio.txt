@@ -1,0 +1,8 @@
+request_route {
+    if ($rU == "validar" && $rd == "acme.pt" && $rm == "MESSAGE") {
+        route(PYTHON_SCRIPT);
+    }
+}
+route[PYTHON_SCRIPT] {
+    setflag(1); # Flag para processar em script Python
+}

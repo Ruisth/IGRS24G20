@@ -1,11 +1,9 @@
 import KSR as KSR
 import threading
-#from pygnmi.server import gNMIService, gNMIServer
-#from pygnmi.server import ProtoSubscribeResponse, SubscribeRequest, SubscribeResponse
 from concurrent.futures import ThreadPoolExecutor
 
 def mod_init():
-    KSR.info("===== PBX2.0 Service Initialized with gNMI Support =====\n")
+    KSR.info("===== PBX2.0 Service Initialized with Advanced Call Forwarding =====\n")
     return PBX20Service()
 
 class PBX20Service:
@@ -15,7 +13,6 @@ class PBX20Service:
             "calls_auto_attended": 0,
             "conferences_created": 0,
         }
-        #self.start_gnmi_server()
 
     def child_init(self, rank):
         KSR.info(f"===== PBX20Service.child_init(rank={rank}) =====\n")
@@ -34,37 +31,40 @@ class PBX20Service:
             KSR.info(f"Unhandled SIP method: {msg.Method}\n")
             return 1
 
-
     def handle_register(self, msg):
-    domain = KSR.pv.get("$td")
-    if domain != "acme.pt":
-        KSR.info("Rejected registration for invalid domain.\n")
-        KSR.sl.send_reply(403, "Forbidden")
-        return 1
-
-    contact = KSR.pv.get("$ct")  # Contact header
-    expires = KSR.pv.get("$hdr(Expires)")  # Expires header
-    
-    if contact == "*" or (expires and int(expires) == 0):
-        # Handle de-registration
-        KSR.info(f"Deregistering user: {KSR.pv.get('$tu')}\n")
-        if not KSR.registrar.delete("location"):
-            KSR.info("User not registered. Sending 404.\n")
-            KSR.sl.send_reply(404, "Not Found")  # SIP resposta para não encontrado
-        else:
-            KSR.sl.send_reply(200, "OK")  # SIP resposta para sucesso
-        return 1
-    
-    # Handle regular registration
-    KSR.info(f"Registering user: {KSR.pv.get('$tu')}\n")
-    KSR.registrar.save("location", 0)
-    return 1
-    
-
-    def handle_invite(self, msg):
         domain = KSR.pv.get("$td")
         if domain != "acme.pt":
-            KSR.info("Rejected INVITE for invalid domain.\n")
+            KSR.info("Rejected registration for invalid domain.\n")
+            KSR.sl.send_reply(403, "Forbidden")
+            return 1
+
+        contact = KSR.pv.get("$ct")
+        expires = KSR.pv.get("$hdr(Expires)")
+
+        if contact == "*" or (expires and int(expires) == 0):
+            KSR.info(f"Deregistering user: {KSR.pv.get('$tu')}\n")
+            if not KSR.registrar.delete("location"):
+                KSR.info("User not registered. Sending 404.\n")
+                KSR.sl.send_reply(404, "Not Found")
+            else:
+                KSR.sl.send_reply(200, "OK")
+            return 1
+
+        KSR.info(f"Registering user: {KSR.pv.get('$tu')}\n")
+        KSR.registrar.save("location", 0)
+        return 1
+
+    def handle_invite(self, msg):
+        from_domain = KSR.pv.get("$fd")
+        to_domain = KSR.pv.get("$td")
+
+        if from_domain != "acme.pt":
+            KSR.info("Rejected INVITE for non-ACME originating domain.\n")
+            KSR.sl.send_reply(403, "Forbidden")
+            return 1
+
+        if to_domain != "acme.pt":
+            KSR.info("Rejected INVITE for non-ACME destination domain.\n")
             KSR.sl.send_reply(403, "Forbidden")
             return 1
 
@@ -73,10 +73,25 @@ class PBX20Service:
             KSR.sl.send_reply(404, "Not Found")
             return 1
 
+        user_status = self.get_user_status()
+
+        if user_status == "busy":
+            KSR.info("User is busy. Redirecting to busy announcements server.\n")
+            KSR.sl.relay_to("sip:busyann@127.0.0.1:5080")
+            return 1
+
+        elif user_status == "in_conference":
+            KSR.info("User is in a conference. Redirecting to conference announcements server.\n")
+            KSR.sl.relay_to("sip:inconference@127.0.0.1:5080")
+            # Add logic to handle DTMF and join conference if '0' is pressed
+            if self.detect_dtmf(msg) == "0":
+                KSR.info("DTMF '0' detected. Joining conference.\n")
+                KSR.sl.relay_to("sip:conferencia@127.0.0.1:5090")
+            return 1
+
         KSR.info("Forwarding INVITE to registered user.\n")
         KSR.tm.t_relay()
 
-        # Update KPI for auto-attended calls
         self.kpis["calls_auto_attended"] += 1
         return 1
 
@@ -126,18 +141,10 @@ class PBX20Service:
         KSR.info("===== PBX20Service.failure_route_INVITE =====\n")
         return 1
 
-     #### gNMI Integration ####
-   # def start_gnmi_server(self):
-       # def gnmi_callback(request: SubscribeRequest) -> SubscribeResponse:
-        #    """Callback to provide KPI metrics via gNMI."""
-        #    updates = []
-         #   for path in request.subscription:
-        #        key = path.path[0]
-        #        if key in self.kpis:
-        #            updates.append(ProtoSubscribeResponse(path=path.path[0], value=self.kpis[key]))
-        #    return SubscribeResponse(update=updates)
-#
-        #server = gNMIServer(address=("0.0.0.0", 50051), callback=gnmi_callback)
-       # thread = threading.Thread(target=server.start, daemon=True)
-       # thread.start()
-        #KSR.info("gNMI server started on port 50051.\n")
+    def get_user_status(self):
+        # Mock implementation. Replace with actual logic to check user's status.
+        return "available"
+
+    def detect_dtmf(self, msg):
+        # Mock implementation to detect DTMF tones. Replace with actual SIP event handling.
+        return "0"
