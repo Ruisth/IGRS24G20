@@ -67,6 +67,14 @@ class PBX20Service:
             KSR.info("Rejected INVITE for non-ACME destination domain.\n")
             KSR.sl.send_reply(403, "Forbidden")
             return 1
+        
+        # Redirect for conference room
+        uri = KSR.pv.get("$ru")
+        if uri == "sip:conferencia@acme.pt":
+            KSR.info("Redirecting to conference room.\n")
+            KSR.tm.t_relay_to_uri("sip:conferencia@127.0.0.1:5090")
+            self.kpis["conferences_created"] += 1  # Add KPI to conference
+            return 1
 
         if not KSR.registrar.lookup("location"):
             KSR.info("User not registered. Sending 404.\n")
@@ -76,17 +84,11 @@ class PBX20Service:
         user_status = self.get_user_status()
 
         if user_status == "busy":
-            KSR.info("User is busy. Redirecting to busy announcements server.\n")
-            KSR.sl.relay_to("sip:busyann@127.0.0.1:5080")
+            self.proxy_to_announcement("busyann@127.0.0.1:5080", msg)
             return 1
 
         elif user_status == "in_conference":
-            KSR.info("User is in a conference. Redirecting to conference announcements server.\n")
-            KSR.sl.relay_to("sip:inconference@127.0.0.1:5080")
-            # Add logic to handle DTMF and join conference if '0' is pressed
-            if self.detect_dtmf(msg) == "0":
-                KSR.info("DTMF '0' detected. Joining conference.\n")
-                KSR.sl.relay_to("sip:conferencia@127.0.0.1:5090")
+            self.proxy_to_announcement("inconference@127.0.0.1:5080", msg, is_conference=True)
             return 1
 
         KSR.info("Forwarding INVITE to registered user.\n")
@@ -140,6 +142,25 @@ class PBX20Service:
     def ksr_failure_route_INVITE(self, msg):
         KSR.info("===== PBX20Service.failure_route_INVITE =====\n")
         return 1
+
+    def proxy_to_announcement(self, server_uri, msg, is_conference=False):
+        """
+        Proxy the request to the appropriate announcement server.
+        :param server_uri: The URI of the announcement server
+        :param msg: The SIP message being processed
+        :param is_conference: If True, handle additional conference logic
+        """
+        try:
+            KSR.info(f"Proxying to announcement server: {server_uri}\n")
+            KSR.tm.t_relay_to_uri(server_uri)
+            if is_conference:
+                KSR.info("Handling DTMF logic for conference redirection.\n")
+                if self.detect_dtmf(msg) == "0":
+                    KSR.info("DTMF '0' detected. Joining conference.\n")
+                    KSR.tm.t_relay_to_uri("sip:conferencia@127.0.0.1:5090")
+        except Exception as e:
+            KSR.err(f"Error during proxying to announcement server: {str(e)}\n")
+            KSR.sl.send_reply(500, "Internal Server Error")
 
     def get_user_status(self):
         # Mock implementation. Replace with actual logic to check user's status.
