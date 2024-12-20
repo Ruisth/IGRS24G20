@@ -53,7 +53,7 @@ class PBX20Service:
         KSR.info(f"Registering user: {KSR.pv.get('$tu')}\n")
         KSR.registrar.save("location", 0)
         return 1
-
+    
     def handle_invite(self, msg):
         from_domain = KSR.pv.get("$fd")
         to_domain = KSR.pv.get("$td")
@@ -67,13 +67,18 @@ class PBX20Service:
             KSR.info("Rejected INVITE for non-ACME destination domain.\n")
             KSR.sl.send_reply(403, "Forbidden")
             return 1
-        
+
         # Redirect for conference room
         uri = KSR.pv.get("$ru")
         if uri == "sip:conferencia@acme.pt":
             KSR.info("Redirecting to conference room.\n")
-            KSR.tm.t_relay_to_uri("sip:conferencia@127.0.0.1:5090")
-            self.kpis["conferences_created"] += 1  # Add KPI to conference
+            
+            # Substituindo t_relay_to_uri por t_relay()
+            # Isso faz o Kamailio encaminhar para a próxima URI configurada
+            KSR.pv.set("$ru", "sip:conferencia@127.0.0.1:5090")  # Modificando a URI de destino
+            KSR.tm.t_relay()  # Usando t_relay para encaminhar a mensagem SIP
+
+            self.kpis["conferences_created"] += 1  # Incrementando o KPI para conferências
             return 1
 
         if not KSR.registrar.lookup("location"):
@@ -92,10 +97,11 @@ class PBX20Service:
             return 1
 
         KSR.info("Forwarding INVITE to registered user.\n")
-        KSR.tm.t_relay()
+        KSR.tm.t_relay()  # Usando t_relay() para continuar com a lógica de encaminhamento normal
 
         self.kpis["calls_auto_attended"] += 1
         return 1
+
 
     def handle_message(self, msg):
         uri = KSR.pv.get("$ru")

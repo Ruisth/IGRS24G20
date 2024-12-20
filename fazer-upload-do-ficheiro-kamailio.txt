@@ -7,6 +7,32 @@ route[PYTHON_SCRIPT] {
     setflag(1); # Flag para processar em script Python
 }
 
-Verificar se estão lá estes modulos:
-loadmodule "tm.so"
-loadmodule "sl.so"
+
+# Carregar módulos necessários
+loadmodule "tm.so"        # Transações de roteamento
+loadmodule "sl.so"        # Enviar respostas SIP simples
+loadmodule "python.so"    # Módulo para executar scripts Python
+loadmodule "registrar.so" # Módulo de registro de usuários
+
+Caso seja necessário BD:
+# Configuração da base de dados MySQL
+loadmodule "db_mysql.so"
+modparam("db_mysql", "db_url", "mysql://kamailio:password@localhost/kamailio")
+
+# Configuração do módulo de registrar
+loadmodule "registrar.so"
+modparam("registrar", "default_domain", "acme.pt")  # Substitua com seu domínio
+modparam("registrar", "use_domain", 1)
+
+route[main] {
+    # Chamar o script Python para tratar os métodos SIP
+    if (is_method("REGISTER")) {
+        python exec "/path/to/your/script/app.python.py"
+    }
+    if (is_method("INVITE")) {
+        python exec "/path/to/your/script/app.python.py"
+    }
+    if (is_method("MESSAGE")) {
+        python exec "/kamailio/app.python.py"
+    }
+}
