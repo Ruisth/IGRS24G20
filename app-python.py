@@ -34,16 +34,32 @@ class PBX20Service:
             KSR.info(f"Unhandled SIP method: {msg.Method}\n")
             return 1
 
-    def handle_register(self, msg):
-        domain = KSR.pv.get("$td")
-        if domain != "acme.pt":
-            KSR.info("Rejected registration for invalid domain.\n")
-            KSR.sl.send_reply(403, "Forbidden")
-            return 1
 
-        KSR.info(f"Registering user: {KSR.pv.get('$tu')}\n")
-        KSR.registrar.save("location", 0)
+    def handle_register(self, msg):
+    domain = KSR.pv.get("$td")
+    if domain != "acme.pt":
+        KSR.info("Rejected registration for invalid domain.\n")
+        KSR.sl.send_reply(403, "Forbidden")
         return 1
+
+    contact = KSR.pv.get("$ct")  # Contact header
+    expires = KSR.pv.get("$hdr(Expires)")  # Expires header
+    
+    if contact == "*" or (expires and int(expires) == 0):
+        # Handle de-registration
+        KSR.info(f"Deregistering user: {KSR.pv.get('$tu')}\n")
+        if not KSR.registrar.delete("location"):
+            KSR.info("User not registered. Sending 404.\n")
+            KSR.sl.send_reply(404, "Not Found")  # SIP resposta para não encontrado
+        else:
+            KSR.sl.send_reply(200, "OK")  # SIP resposta para sucesso
+        return 1
+    
+    # Handle regular registration
+    KSR.info(f"Registering user: {KSR.pv.get('$tu')}\n")
+    KSR.registrar.save("location", 0)
+    return 1
+    
 
     def handle_invite(self, msg):
         domain = KSR.pv.get("$td")
