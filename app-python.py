@@ -2,8 +2,25 @@ import KSR as KSR
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
+# Controlador para evitar loops de INVITE
+class CallTracker:
+    def __init__(self):
+        self.processed_calls = set()
+
+    def track_call(self, call_id):
+        if call_id in self.processed_calls:
+            return True  # Já foi processada antes
+        else:
+            self.processed_calls.add(call_id)
+            return False
+
+    def reset(self):
+        self.processed_calls.clear()
+
+call_tracker = CallTracker()
+
 def mod_init():
-    KSR.info("===== PBX2.0 Service Initialized with Advanced Call Forwarding =====\n")
+    KSR.info("===== PBX20Service Initialized with Advanced Call Forwarding =====\n")
     return PBX20Service()
 
 class PBX20Service:
@@ -54,8 +71,13 @@ class PBX20Service:
         KSR.registrar.save("location", 1)  # Register user with location data
         return 1
 
-    
     def handle_invite(self, msg):
+        # Adicionar controle de loop usando Call-ID
+        call_id = KSR.pv.get("$ci")
+        if call_tracker.track_call(call_id):
+            KSR.info(f"Call {call_id} already processed, discarding.\n")
+            return -1  # Descarta a mensagem, evita loop
+
         from_domain = KSR.pv.get("$fd")
         to_domain = KSR.pv.get("$td")
 
@@ -69,19 +91,19 @@ class PBX20Service:
             KSR.sl.send_reply(403, "Forbidden")
             return 1
 
-        # Redirect for conference room
+        # Redirecionamento para sala de conferência
         uri = KSR.pv.get("$ru")
         if uri == "sip:conferencia@acme.pt":
             KSR.info("Redirecting to conference room.\n")
             
-            # Substituindo t_relay_to_uri por t_relay()
-            # Isso faz o Kamailio encaminhar para a próxima URI configurada
-            KSR.pv.set("$ru", "sip:conferencia@127.0.0.1:5090")  # Modificando a URI de destino
-            KSR.tm.t_relay()  # Usando t_relay para encaminhar a mensagem SIP
+            # Modifica a URI de destino
+            KSR.pv.set("$ru", "sip:conferencia@127.0.0.1:5090")
+            KSR.tm.t_relay()
 
-            self.kpis["conferences_created"] += 1  # Incrementando o KPI para conferências
+            self.kpis["conferences_created"] += 1
             return 1
 
+        # Verifica registro
         if not KSR.registrar.lookup("location"):
             KSR.info("User not registered. Sending 404.\n")
             KSR.sl.send_reply(404, "Not Found")
@@ -90,19 +112,18 @@ class PBX20Service:
         user_status = self.get_user_status()
 
         if user_status == "busy":
-            self.proxy_to_announcement("busyann@127.0.0.1:5080", msg)
+            self.proxy_to_announcement("sip:busyann@127.0.0.1:5080", msg)
             return 1
 
         elif user_status == "in_conference":
-            self.proxy_to_announcement("inconference@127.0.0.1:5080", msg, is_conference=True)
+            self.proxy_to_announcement("sip:inconference@127.0.0.1:5080", msg, is_conference=True)
             return 1
 
         KSR.info("Forwarding INVITE to registered user.\n")
-        KSR.tm.t_relay()  # Usando t_relay() para continuar com a lógica de encaminhamento normal
+        KSR.tm.t_relay()  # Encaminha o INVITE normalmente
 
         self.kpis["calls_auto_attended"] += 1
         return 1
-
 
     def handle_message(self, msg):
         uri = KSR.pv.get("$ru")
