@@ -43,7 +43,7 @@ class PBX20Service:
 
         if contact == "*" or (expires and int(expires) == 0):
             KSR.info(f"Deregistering user: {KSR.pv.get('$tu')}\n")
-            if not KSR.registrar.delete("location"):
+            if not KSR.registrar.save("location", 0):
                 KSR.info("User not registered. Sending 404.\n")
                 KSR.sl.send_reply(404, "Not Found")
             else:
@@ -51,8 +51,9 @@ class PBX20Service:
             return 1
 
         KSR.info(f"Registering user: {KSR.pv.get('$tu')}\n")
-        KSR.registrar.save("location", 0)
+        KSR.registrar.save("location", 1)  # Register user with location data
         return 1
+
     
     def handle_invite(self, msg):
         from_domain = KSR.pv.get("$fd")
