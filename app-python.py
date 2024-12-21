@@ -186,9 +186,11 @@ class PBX20Service:
                 if self.detect_dtmf(msg) == "0":
                     KSR.info("DTMF '0' detected. Joining conference.\n")
                     KSR.tm.t_relay_to_uri("sip:conferencia@127.0.0.1:5090")
+            return True
         except Exception as e:
             KSR.err(f"Error during proxying to announcement server: {str(e)}\n")
             KSR.sl.send_reply(500, "Internal Server Error")
+        return False
 
     def get_user_status(self):
         # Mock implementation. Replace with actual logic to check user's status.
